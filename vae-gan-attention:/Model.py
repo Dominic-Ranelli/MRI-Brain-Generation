@@ -1,3 +1,13 @@
+"""
+VAE-GAN Training Pipeline for MRI Image Synthesis and Representation Learning
+
+Defines classes for training a Variational Autoencoder (VAE) and
+an optional GAN discriminator to learn compact latent representations and generate
+realistic grayscale MRI images.
+
+"""
+
+
 import os
 import sys
 import torch
@@ -11,53 +21,60 @@ from datetime import datetime
 import optuna
 import subprocess
 
+# Global setup
 seed = 0
 torch.manual_seed(0)
 
-print("In VAE, running!")
 
-# timestamped folders for run results
+# Timestamped folders for run results
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 run_dir = os.path.join("vae_gan3_runs", timestamp)
 os.makedirs(run_dir, exist_ok=True)
 
-# -- SET DEVICE --
+# Device setup
 if torch.cuda.is_available(): 
     device = torch.device("cuda")
     print("Using GPU!!!")
 else: 
     device = "cpu"
 
-# have prints output to both file and console (for Turing)
+# Setup for logging info.
 class DualOut:
+    # Redirects stdout to terminal and save file.
     def __init__(self, filepath):
-        self.terminal = sys.stdout  # Capture the terminal output
-        self.logfile = open(filepath, "w")  # Open the output file to write
-        self.errorfile = open(filepath.replace("output.txt", "error.txt"), "w")  # Capture error logs
+        self.terminal = sys.stdout
+        self.logfile = open(filepath, "w") 
+        self.errorfile = open(filepath.replace("output.txt", "error.txt"), "w") 
 
     def write(self, message):
-        self.terminal.write(message)  # Print to terminal
-        self.logfile.write(message)  # Write to output file
-        if message.startswith('Traceback'):  # If it's an error message, also log to error file
+        self.terminal.write(message)
+        self.logfile.write(message)
+        if message.startswith('Traceback'):
             self.errorfile.write(message)
 
     def flush(self):
-        self.terminal.flush()  # Ensure terminal output is flushed
-        self.logfile.flush()  # Ensure log file output is flushed
-        self.errorfile.flush()  # Ensure error log is flushed
+        self.terminal.flush()
+        self.logfile.flush()
+        self.errorfile.flush()
 
 sys.stdout = DualOut(os.path.join(run_dir,"output.txt"))
 
-# -- DEFINE MRI DATA --
+# Dataset
 class MRIDataset(Dataset):
+    # Dataset for grayscale MRI images.
+    # Args:
+    #     root_dir (str): Path to dataset folder.
+    #     transform (callable, optional): Transform to apply.
+    #     limit (int, optional): Limits number of images.
+    
     def __init__(self, root_dir, transform=None, limit=None):
         self.root_dir = root_dir
         self.image_paths = []
-        for subdir in ['Mild Dementia']: # TODO switch to all patients - learn representations from all stages of dementia
+        for subdir in ['Mild Dementia']:
             subdir_path = os.path.join(root_dir, subdir)
             self.image_paths += [os.path.join(subdir_path, f) for f in os.listdir(subdir_path)]
         if limit:
-            self.image_paths = self.image_paths[:limit]  # if neccesary, set limit on training to run model faster
+            self.image_paths = self.image_paths[:limit]
         self.transform = transform
 
     def __len__(self):
@@ -65,13 +82,43 @@ class MRIDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
-        img = Image.open(img_path).convert("L")  # grayscale
+        img = Image.open(img_path).convert("L")
         if self.transform:
             img = self.transform(img)
         return img
 
-# -- VAE MODEL --
+
+# Self-attention Layer
+class SelfAttention(nn.Module):
+    # Self attention over spatial features
+    # Args
+        # channels (int): Number of input channels.
+    def __init__(self, channels):
+        super(SelfAttention, self).__init__()
+        self.query = nn.Conv2d(channels, channels//8, 1)
+        self.key = nn.Conv2d(channels, channels//8, 1)
+        self.value = nn.Conv2d(channels, channels, 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+    
+    def forward(self, x): 
+        batch_size, C, H, W = x.size()
+
+        query = self.query(x).view(batch_size, -1, H*W).permute(0, 2, 1)
+        key = self.key(x).view(batch_size, -1, H*W)
+        attention=torch.softmax(torch.bmm(query,key), dim=-1) 
+        value = self.value(x).view(batch_size, -1, H*W) 
+
+        out=torch.bmm(value, attention.permute(0, 2, 1)).view(batch_size, C, H, W)
+        out = self.gamma * out + x
+        return out
+
+# Variational Autoencoder
 class VAE(nn.Module):
+    # Variational autoencoder with self-attention encoder
+    # Args:
+        # latent_dim (int): Latent space dimensionality
+        # img_size (int): Height and width of input images.
+    
     def __init__(self, latent_dim, img_size):
         super(VAE, self).__init__()
         img_size=img_size
@@ -118,30 +165,14 @@ class VAE(nn.Module):
         z = self.reparameterize(mu, logvar)
         return self.decode(z, img_size), mu, logvar
     
-# -- SELF-ATTENTION LAYERS -- 
-class SelfAttention(nn.Module):
 
-    def __init__(self, channels):
-        super(SelfAttention, self).__init__()
-        self.query = nn.Conv2d(channels, channels//8, 1)
-        self.key = nn.Conv2d(channels, channels//8, 1)
-        self.value = nn.Conv2d(channels, channels, 1)
-        self.gamma = nn.Parameter(torch.zeros(1))
-    
-    def forward(self, x): 
-        batch_size, C, H, W = x.size()
-
-        query = self.query(x).view(batch_size, -1, H*W).permute(0, 2, 1)
-        key = self.key(x).view(batch_size, -1, H*W)
-        attention=torch.softmax(torch.bmm(query,key), dim=-1) 
-        value = self.value(x).view(batch_size, -1, H*W) 
-
-        out=torch.bmm(value, attention.permute(0, 2, 1)).view(batch_size, C, H, W)
-        out = self.gamma * out + x
-        return out
-
-# -- GENERATOR FOR GAN --
+# Generator
 class Generator(nn.Module):
+    # GAN Generator - decodes latent vector into image.
+    # Args:
+    #     latent_dim (int): Latent dimension size.
+    #     img_size (int): Output image resolution.
+    
     def __init__(self, latent_dim, img_size): 
         super(Generator, self).__init__()
         self.fc = nn.Linear(latent_dim, 128*(img_size//8) * (img_size // 8))
@@ -156,8 +187,13 @@ class Generator(nn.Module):
         x = torch.tanh(self.deconv3(x))
         return x
     
-# -- DISCRIMINATOR --
+# Discriminator
 class Discriminator(nn.Module): 
+    # GAN Discriminator: Classifies real & fake images appropriately.
+
+    # Args:
+    #     img_size (int): Input image resolution.
+
     def __init__(self, img_size): 
         super(Discriminator, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, 4, 2, 1)
@@ -169,17 +205,16 @@ class Discriminator(nn.Module):
         x = torch.relu(self.conv1(x))
         x = torch.relu(self.conv2(x))
         x = torch.relu(self.conv3(x))
-        x = x.view(x.size(0), -1) # flatten
+        x = x.view(x.size(0), -1)
         return torch.sigmoid(self.fc(x))
 
-# -- LOSS FUNCTIONS --
+# Loss Functions
 def wgan_loss_d(discriminator, real, fake, real_images, fake_images, epsilon=1e-6): 
-
-    # wasserstein loss - more stable training process
+    # Wasserstein loss for discriminator with gradient penalty.
+    
     loss_real = torch.mean(real)
     loss_fake = torch.mean(fake)
-
-    # gradient penalty - helps to prevent discriminator from becoming too confident in its predictions
+    
     epsilon = torch.rand(real_images.size(0), 1, 1, 1).to(device)
     interpolated = epsilon * real_images + (1-epsilon) * fake_images
     interpolated.requires_grad_(True)
@@ -188,38 +223,60 @@ def wgan_loss_d(discriminator, real, fake, real_images, fake_images, epsilon=1e-
     gradients = torch.autograd.grad(outputs=interpolated_pts, inputs=interpolated, grad_outputs=torch.ones_like(interpolated_pts).to(device),create_graph=True, retain_graph=True)[0]
     gradient_penalty = ((gradients.view(gradients.size(0), -1).norm(2, dim=1) - 1) ** 2).mean()
 
-    # loss w/ penalty: 
     d_loss = loss_fake - loss_real + 10 * gradient_penalty 
     return d_loss
 
 def wgan_loss_g(fake): 
+    # Wasserstein loss for generator.
     return -torch.mean(fake)
 
-def vae_loss(recon_x, x, mu, logvar, beta=0.1): # beta allows us to control ratio between recon loss and kl divergence
+def vae_loss(recon_x, x, mu, logvar, beta=0.1):
+    # Combined VAE loss (reconstruction + KL divergence).
+    # Args:
+    #     recon_x (Tensor): Reconstructed image.
+    #     x (Tensor): Ground truth image.
+    #     mu (Tensor): Mean of latent distribution.
+    #     logvar (Tensor): Log variance of latent distribution.
+    #     beta (float): KL divergence weight.
+    
     recon_loss = nn.MSELoss()(recon_x, x)
-    logvar = torch.clamp(logvar, min=-10, max=10)  # Clamp logvar
+    logvar = torch.clamp(logvar, min=-10, max=10)
     kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / x.size(0)
     return recon_loss + beta * kl_div
 
 def gan_loss_d(real, fake): 
-    real_loss = nn.BCELoss()(real, torch.ones_like(real)) # real images labeled 1
-    fake_loss = nn.BCELoss()(fake, torch.zeros_like(fake)) # fake images labeled 0
+    real_loss = nn.BCELoss()(real, torch.ones_like(real))
+    fake_loss = nn.BCELoss()(fake, torch.zeros_like(fake))
     return (real_loss + fake_loss) / 2
 
 def gan_loss_g(fake):
-    return nn.BCELoss()(fake, torch.ones_like(fake)) # fake images w/ 1 label
+    return nn.BCELoss()(fake, torch.ones_like(fake))
 
-# -- TRAIN -- 
+# Training VAE
 def train_vae(root_dir, img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=None, learning_rate=1e-3, beta = 0.1):
     print(f"Params: \nImg size: {img_size}\nBatch size: {batch_size}\nEpochs: {epochs}\nLatent dim: {latent_dim}\nLimit: {limit}\nLearning Rate: {learning_rate}")
+    # Trains (VAE) on MRI images.
+    # Args:
+    #     root_dir (str): Directory holding MRI image data.
+    #     img_size (int): Input & output image size.
+    #     batch_size (int): Number of samples per batch.
+    #     epochs (int): Number of training epochs.
+    #     latent_dim (int): Dimensionality of latent space.
+    #     limit (int, optional): Max number of images to use.
+    #     learning_rate (float): Learning rate for optimizer.
+    #     beta (float): Weight for KL divergence in VAE loss.
+
+    # Returns:
+    #     tuple: (final_train_loss, final_val_loss)
    
-    # transform for preprocessing
+    # Image preprocessing
     transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5])  # Normalize to [-1, 1]
+        transforms.Normalize([0.5], [0.5]) 
     ])
-    
+
+    # Loading dataset
     dataset = MRIDataset(root_dir=root_dir, transform=transform, limit=limit)
 
     train_size = int(0.8 * len(dataset))
@@ -229,12 +286,13 @@ def train_vae(root_dir, img_size=128, batch_size=16, epochs=50, latent_dim=128, 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
-    # initialize
+    # Initialize model and optimizer
     vae = VAE(latent_dim=latent_dim, img_size=img_size).to(device)
     optimizer = optim.Adam(vae.parameters(), lr=learning_rate, weight_decay=1e-5)
 
     os.makedirs('generate_images', exist_ok=True)
-    # -- TRAIN LOOP --
+    
+    # Training loop
     train_losses, val_losses = [], []
     for epoch in range(epochs):
         vae.train()
@@ -251,7 +309,8 @@ def train_vae(root_dir, img_size=128, batch_size=16, epochs=50, latent_dim=128, 
             train_loss += loss.item()
 
         train_losses.append(train_loss / len(train_loader))
-        
+
+        # Validation
         vae.eval()
         val_loss = 0
         with torch.no_grad():
@@ -266,7 +325,7 @@ def train_vae(root_dir, img_size=128, batch_size=16, epochs=50, latent_dim=128, 
 
         print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}")
 
-    # plot training curves
+    # Plot training curves
     plt.plot(train_losses, label="Train Loss")
     plt.plot(val_losses, label="Validation Loss")
     plt.legend()
@@ -276,7 +335,7 @@ def train_vae(root_dir, img_size=128, batch_size=16, epochs=50, latent_dim=128, 
 
     torch.save(vae.state_dict(), os.path.join(run_dir,"vae_model.pth"))
 
-    # visualization from random latent points - check how good the latent space is 
+    # Visualization from latent space.
     vae.eval()
     num_samples = 16
     with torch.no_grad():
@@ -297,10 +356,23 @@ def train_vae(root_dir, img_size=128, batch_size=16, epochs=50, latent_dim=128, 
 
     return train_losses[-1], val_losses[-1]
 
+# VAE-GAN Training
 def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=1000, learning_rate=1e-3, beta=0.1): 
     print(f"Params: \nImg size: {img_size}\nBatch size: {batch_size}\nEpochs: {epochs}\nLatent dim: {latent_dim}\nLimit: {limit}\nLearning Rate: {learning_rate}\nBeta: {beta}")
+    # Trains VAE-GAN using Wasserstein loss with gradient penalty.
+
+    # Args:
+    #     img_size (int): Size of input & output images.
+    #     batch_size (int): Batch size for training.
+    #     epochs (int): Number of epochs to train.
+    #     latent_dim (int): Size of latent vector.
+    #     limit (int): Max number of training images.
+    #     learning_rate (float): Learning rate for optimizers.
+    #     beta (float): KL-divergence weight in VAE loss.
+
+    Returns:
+        float: Final validation loss.
     
-    # transform for preprocessing 
     transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
@@ -325,7 +397,7 @@ def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=
     optimizer_gen = optim.Adam(generator.parameters(), lr=learning_rate, weight_decay=1e-5)
     optimizer_disc = optim.Adam(discriminator.parameters(), lr=learning_rate, weight_decay=1e-5)
 
-    # -- TRAIN LOOP --
+    # Training loop
     train_losses, val_losses = [], []
     for epoch in range(epochs): 
         vae.train()
@@ -336,28 +408,28 @@ def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=
         for batch in train_loader: 
             batch = batch.to(device)
 
-            # get real and fake images
+            # Train discriminator
             real_labels = discriminator(batch)
             noise = torch.randn(batch.size(0), latent_dim).to(device)
             fake_images = generator(noise, img_size)
             fake_labels = discriminator(fake_images.detach())
 
-            # discriminator loss 
+            # Discriminator loss 
             disc_loss = wgan_loss_d(discriminator, real_labels, fake_labels, batch, fake_images)
             optimizer_disc.zero_grad()
             disc_loss.backward()
             optimizer_disc.step()
 
-            # train generator
+            # Train generator
             optimizer_gen.zero_grad()
             fake_labels = discriminator(fake_images)
 
-            # generator loss
+            # Generator loss
             gen_loss = wgan_loss_g(fake_labels)
             gen_loss.backward()
             optimizer_gen.step()
 
-            # train vae 
+            # Train VAE 
             optimizer_vae.zero_grad()
             recon_batch, mu, logvar = vae(batch, img_size=img_size)
             vae_loss_val = vae_loss(recon_batch, batch, mu, logvar, beta=beta)
@@ -368,7 +440,7 @@ def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=
 
         train_losses.append(train_loss/len(train_loader))
 
-        # validation loop
+        # Validation
         vae.eval()
         generator.eval()
         discriminator.eval()
@@ -386,6 +458,8 @@ def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=
         val_losses.append(val_loss/len(val_loader))
         print(f"Epoch {epoch}/{epochs}, train loss: {train_loss/len(train_loader)}, val loss: {val_loss/len(val_loader)}")
 
+
+    # Show loss curve 
     plt.plot(train_losses, label="Train Loss")
     plt.plot(val_losses, label="Validation Loss")
     plt.legend()
@@ -394,7 +468,7 @@ def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=
 
     torch.save(vae.state_dict(), os.path.join(run_dir,"vae_model.pth"))
 
-    # visualization from random latent points - check how good the latent space is 
+    # Sample from latent space
     vae.eval()
     num_samples = 16
     with torch.no_grad():
@@ -413,8 +487,19 @@ def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=
 
     return val_losses[-1]
 
-# optimize hyperparameters with optuna 
+# Hyperparameter Optimization
 def optimize_hyperparams(img_size=128, epochs=25, limit=100, n_trials=100):
+    # Performs Optuna hyperparameter optimization for VAE-GAN.
+
+    # Args:
+    #     img_size (int): Image resolution.
+    #     epochs (int): Number of epochs for each trial.
+    #     limit (int): Max number of training samples per trial.
+    #     n_trials (int): Number of Optuna trials to run.
+
+    Returns:
+        tuple: (best_params, best_val_loss)
+    
     def objective(trial): 
         latent_dim = trial.suggest_int("latent_dim", 32, img_size) 
         learning_rate = trial.suggest_float("learning_rate", 1e-4, 1e-3)
@@ -464,5 +549,5 @@ best_params, best_value = optimize_hyperparams(
 print("Completed VAE")
 print(f"Best parameters: {best_params}\n Best value: {best_value}\n")
 
-# restore prints 
+# Restore prints 
 sys.stdout = sys.__stdout__
