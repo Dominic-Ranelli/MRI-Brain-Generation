@@ -64,6 +64,3 @@ This project combines the strengths of VAE and GANs to generate high-resolution,
 
 — CUDA 
 
-— Self Attention Mechanism
-
-— Wasserstein GAN Loss
