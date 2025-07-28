@@ -59,7 +59,11 @@ This project combines the strengths of VAE and GANs to generate high-resolution,
 — Optuna
 
 — Datetime
+
 — OS and Sys
+
 — CUDA 
+
 — Self Attention Mechanism
+
 — Wasserstein GAN Loss
