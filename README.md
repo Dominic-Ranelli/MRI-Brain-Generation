@@ -32,20 +32,32 @@ This project combines the strengths of VAE and GANs to generate high-resolution,
 
 ## Features
 — Variational Autoencoder (VAE) + GAN hybrid
+
 — Attention modules (channel/spatial-wise)
+
 — Custom logging to file and terminal
+
 — Configurable training loop
+
 — GPU support with PyTorch
+
 — Compatible with Optuna for hyperparameter tuning
+
 — Modular training and output saving
 
 ## Technologies Used
 — Python 3
+
 — PyTorch
+
 — Torchvision
+
 — PIL (Python Imagine Library)
+
 — Matplotlib
+
 — Optuna
+
 — Datetime
 — OS and Sys
 — CUDA 
