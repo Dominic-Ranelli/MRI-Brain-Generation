@@ -1,112 +1,53 @@
-{\rtf1\ansi\ansicpg1252\cocoartf2709
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\froman\fcharset0 Times-Bold;\f2\froman\fcharset0 Times-Roman;
-\f3\fmodern\fcharset0 Courier;\f4\fmodern\fcharset0 Courier-Bold;}
-{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
-{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;}
-\margl1440\margr1440\vieww11520\viewh12660\viewkind0
-\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+# VAE-GAN with Attention for Medical Image Generation
 
-\f0\fs24 \cf0 # VAE-GAN with Attention for Medical Image Generation\
-\
-A PyTorch implementation of a Variational Autoencoder with a Generative Adversarial Network (VAE-GAN) architecture, designed to generate and enhance high-quality medical images using attention mechanisms.\
-\
-## Motivation \
-\
-This project combines the strengths of VAE and GANs to generate high-resolution, diverse, and realistic brain scan images. It's part of a research initiative aimed at addressing \'93limited access to diverse neuroimaging datasets\'94, especially for diseases like Alzheimer's.\
-\
-# How it works:\
-\pard\pardeftab720\partightenfactor0
+A PyTorch implementation of a Variational Autoencoder with a Generative Adversarial Network (VAE-GAN) architecture, designed to generate and enhance high-quality medical images using attention mechanisms.
 
-\f1\b \cf0 \expnd0\expndtw0\kerning0
-\ul \ulc0 \outl0\strokewidth0 \strokec2 1. Input and Encoder
-\f0\b0 \kerning1\expnd0\expndtw0 \ulnone \outl0\strokewidth0 \
-\pard\pardeftab720\partightenfactor0
+## Motivation 
 
-\f2 \cf0 \expnd0\expndtw0\kerning0
-\outl0\strokewidth0 \strokec2 \'97 The model takes in real medical images (e.g. brain scans).\
-\'97 C
-\f1\b onvolutional encoder
-\f2\b0  compresses each image into a lower-dimensional latent vector 
-\f3\fs26 z
-\f2\fs24 .\
-\'97 Encoder outputs a 
-\f1\b mean (
-\f4\fs26 \uc0\u956 
-\f1\fs24 ) and log-variance (
-\f4\fs26 log(\uc0\u963 \'b2)
-\f1\fs24 )
-\f2\b0 .\
-\'97 The model samples from latent space using the 
-\f1\b reparameterization trick
-\f2\b0 , ensuring the latent distribution remains differentiable.\
-\
-\pard\pardeftab720\partightenfactor0
+This project combines the strengths of VAE and GANs to generate high-resolution, diverse, and realistic brain scan images. It's part of a research initiative aimed at addressing “limited access to diverse neuroimaging datasets”, especially for diseases like Alzheimer's.
 
-\f1\b \cf0 \ul \ulc0 \strokec2 2. Decoder / Generator\
-\ulnone \'97 
-\f2\b0 The sampled latent vector 
-\f3\fs26 \strokec2 z
-\f2\fs24 \strokec2  is passed through a 
-\f1\b \strokec2 decoder
-\f2\b0 \strokec2 , which attempts to reconstruct the original image.\
-\pard\pardeftab720\partightenfactor0
-\cf0 \strokec2 \'97 This decoder functions as the 
-\f1\b generator
-\f2\b0  in GAN component, producing fake images to challenge the discriminator.\
-\'97 The architecture includes 
-\f1\b channel and spatial attention mechanisms
-\f2\b0  to help the model focus on important areas (e.g., tissue structures in medical images).\
-\
-\pard\pardeftab720\partightenfactor0
+# How it works:
+1. Input and Encoder
+— The model takes in real medical images (e.g. brain scans).
+— Convolutional encoder compresses each image into a lower-dimensional latent vector z.
+— Encoder outputs a mean (μ) and log-variance (log(σ²)).
+— The model samples from latent space using the reparameterization trick, ensuring the latent distribution remains differentiable.
 
-\f1\b \cf0 \ul \ulc0 \strokec2 3. Discriminator\
-\pard\pardeftab720\partightenfactor0
+2. Decoder / Generator
+— The sampled latent vector z is passed through a decoder, which attempts to reconstruct the original image.
+— This decoder functions as the generator in GAN component, producing fake images to challenge the discriminator.
+— The architecture includes channel and spatial attention mechanisms to help the model focus on important areas (e.g., tissue structures in medical images).
 
-\f2\b0 \cf0 \ulnone \strokec2 \'97 Separate convolutional network (
-\f1\b discriminator
-\f2\b0 ) is trained to tell apart:\
-	\'97 Real medical images from the dataset\
-	\'97 Reconstructed (fake) images from the decoder\
-\'97 Feedback pushes the generator to produce sharper and more realistic images.\
-\
-\pard\pardeftab720\partightenfactor0
+3. Discriminator
+— Separate convolutional network (discriminator) is trained to tell apart:
+	— Real medical images from the dataset
+	— Reconstructed (fake) images from the decoder
+— Feedback pushes the generator to produce sharper and more realistic images.
 
-\f1\b \cf0 \ul \ulc0 \strokec2 4. Loss Functions\
+4. Loss Functions
+— Reconstruction Loss: Measures pixel-level accuracy between original and reconstructed images
+	— KL Divergence: Forces the latent space to follow a standard normal distribution.
+	— Adversarial Loss: Rewards the generator when it fools the discriminator.
+— Combined in a weighted total loss, allowing control over how much each part contributes.
 
-\f2\b0 \ulnone \'97 
-\f1\b \strokec2 Reconstruction Loss
-\f2\b0 \strokec2 : Measures pixel-level accuracy between original and reconstructed images\
-	\'97 
-\f1\b \strokec2 KL Divergence
-\f2\b0 \strokec2 : Forces the latent space to follow a standard normal distribution.\
-	\'97 
-\f1\b \strokec2 Adversarial Loss
-\f2\b0 \strokec2 : Rewards the generator when it fools the discriminator.\
-\pard\pardeftab720\sa240\partightenfactor0
-\cf0 \strokec2 \'97 Combined in a 
-\f1\b weighted total loss
-\f2\b0 , allowing control over how much each part contributes.\
-\pard\pardeftab720\partightenfactor0
-\cf0 \strokec2 \
-## Features\
-\'97 Variational Autoencoder (VAE) + GAN hybrid\
-\'97 Attention modules (channel/spatial-wise)\
-\'97 Custom logging to file and terminal\
-\'97 Configurable training loop\
-\'97 GPU support with PyTorch\
-\'97 Compatible with Optuna for hyperparameter tuning\
-\'97 Modular training and output saving\
-\
-## Technologies Used\
-\'97 Python 3\
-\'97 PyTorch\
-\'97 Torchvision\
-\'97 PIL (Python Imagine Library)\
-\'97 Matplotlib\
-\'97 Optuna\
-\'97 Datetime\
-\'97 OS and Sys\
-\'97 CUDA \
-\'97 Self Attention Mechanism\
-\'97 Wasserstein GAN Loss\
-}
+## Features
+— Variational Autoencoder (VAE) + GAN hybrid
+— Attention modules (channel/spatial-wise)
+— Custom logging to file and terminal
+— Configurable training loop
+— GPU support with PyTorch
+— Compatible with Optuna for hyperparameter tuning
+— Modular training and output saving
+
+## Technologies Used
+— Python 3
+— PyTorch
+— Torchvision
+— PIL (Python Imagine Library)
+— Matplotlib
+— Optuna
+— Datetime
+— OS and Sys
+— CUDA 
+— Self Attention Mechanism
+— Wasserstein GAN Loss
