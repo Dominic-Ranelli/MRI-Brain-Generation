@@ -16,14 +16,14 @@ This project combines the strengths of VAE and GANs to generate high-resolution,
 
 — The model samples from latent space using the reparameterization trick, ensuring the latent distribution remains differentiable.
 
-3. Decoder / Generator
+2. Decoder / Generator
 — The sampled latent vector z is passed through a decoder, which attempts to reconstruct the original image.
 
 — This decoder functions as the generator in GAN component, producing fake images to challenge the discriminator.
 
 — The architecture includes channel and spatial attention mechanisms to help the model focus on important areas (e.g., tissue structures in medical images).
 
-4. Discriminator
+3. Discriminator
 — Separate convolutional network (discriminator) is trained to tell apart:
 
 	— Real medical images from the dataset
@@ -32,7 +32,7 @@ This project combines the strengths of VAE and GANs to generate high-resolution,
 
 — Feedback pushes the generator to produce sharper and more realistic images.
 
-5. Loss Functions
+4. Loss Functions
 — Reconstruction Loss: Measures pixel-level accuracy between original and reconstructed images
 
 	— KL Divergence: Forces the latent space to follow a standard normal distribution.
