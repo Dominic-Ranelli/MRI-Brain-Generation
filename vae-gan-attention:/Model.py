@@ -61,11 +61,13 @@ sys.stdout = DualOut(os.path.join(run_dir,"output.txt"))
 
 # Dataset
 class MRIDataset(Dataset):
-    # Dataset for grayscale MRI images.
-    # Args:
-    #     root_dir (str): Path to dataset folder.
-    #     transform (callable, optional): Transform to apply.
-    #     limit (int, optional): Limits number of images.
+    """
+    Dataset for grayscale MRI images.
+    Args:
+        root_dir (str): Path to dataset folder.
+        transform (callable, optional): Transform to apply.
+        limit (int, optional): Limits number of images.
+    """
     
     def __init__(self, root_dir, transform=None, limit=None):
         self.root_dir = root_dir
@@ -90,9 +92,11 @@ class MRIDataset(Dataset):
 
 # Self-attention Layer
 class SelfAttention(nn.Module):
-    # Self attention over spatial features
-    # Args
-        # channels (int): Number of input channels.
+    """
+    Self attention over spatial features
+    Args
+        channels (int): Number of input channels.
+    """
     def __init__(self, channels):
         super(SelfAttention, self).__init__()
         self.query = nn.Conv2d(channels, channels//8, 1)
@@ -114,16 +118,18 @@ class SelfAttention(nn.Module):
 
 # Variational Autoencoder
 class VAE(nn.Module):
-    # Variational autoencoder with self-attention encoder
-    # Args:
-        # latent_dim (int): Latent space dimensionality
-        # img_size (int): Height and width of input images.
+    """
+    Variational autoencoder with self-attention encoder
+    Args:
+        latent_dim (int): Latent space dimensionality
+        img_size (int): Height and width of input images.
+    """
     
     def __init__(self, latent_dim, img_size):
         super(VAE, self).__init__()
         img_size=img_size
 
-        # encode
+        # Encode
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 32, 4, 2, 1), nn.ReLU(),
             SelfAttention(32),
@@ -137,7 +143,7 @@ class VAE(nn.Module):
         self.fc_mu = nn.Linear(128 * (img_size // 8) * (img_size // 8), latent_dim)
         self.fc_logvar = nn.Linear(128 * (img_size // 8) * (img_size // 8), latent_dim)
         
-        # decode
+        # Decode
         self.decoder_input = nn.Linear(latent_dim, 128 * (img_size // 8) * (img_size // 8))
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(128, 64, 4, 2, 1), nn.ReLU(),
@@ -168,10 +174,12 @@ class VAE(nn.Module):
 
 # Generator
 class Generator(nn.Module):
-    # GAN Generator - decodes latent vector into image.
-    # Args:
-    #     latent_dim (int): Latent dimension size.
-    #     img_size (int): Output image resolution.
+    """
+    GAN Generator - decodes latent vector into image.
+    Args:
+        latent_dim (int): Latent dimension size.
+        img_size (int): Output image resolution.
+    """
     
     def __init__(self, latent_dim, img_size): 
         super(Generator, self).__init__()
@@ -189,10 +197,12 @@ class Generator(nn.Module):
     
 # Discriminator
 class Discriminator(nn.Module): 
-    # GAN Discriminator: Classifies real & fake images appropriately.
+    """
+    GAN Discriminator: Classifies real & fake images appropriately.
 
-    # Args:
-    #     img_size (int): Input image resolution.
+    Args:
+        img_size (int): Input image resolution.
+    """
 
     def __init__(self, img_size): 
         super(Discriminator, self).__init__()
@@ -231,13 +241,15 @@ def wgan_loss_g(fake):
     return -torch.mean(fake)
 
 def vae_loss(recon_x, x, mu, logvar, beta=0.1):
-    # Combined VAE loss (reconstruction + KL divergence).
-    # Args:
-    #     recon_x (Tensor): Reconstructed image.
-    #     x (Tensor): Ground truth image.
-    #     mu (Tensor): Mean of latent distribution.
-    #     logvar (Tensor): Log variance of latent distribution.
-    #     beta (float): KL divergence weight.
+    """
+    Combined VAE loss (reconstruction + KL divergence).
+    Args:
+        recon_x (Tensor): Reconstructed image.
+        x (Tensor): Ground truth image.
+        mu (Tensor): Mean of latent distribution.
+        logvar (Tensor): Log variance of latent distribution.
+        beta (float): KL divergence weight.
+    """
     
     recon_loss = nn.MSELoss()(recon_x, x)
     logvar = torch.clamp(logvar, min=-10, max=10)
@@ -255,19 +267,21 @@ def gan_loss_g(fake):
 # Training VAE
 def train_vae(root_dir, img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=None, learning_rate=1e-3, beta = 0.1):
     print(f"Params: \nImg size: {img_size}\nBatch size: {batch_size}\nEpochs: {epochs}\nLatent dim: {latent_dim}\nLimit: {limit}\nLearning Rate: {learning_rate}")
-    # Trains (VAE) on MRI images.
-    # Args:
-    #     root_dir (str): Directory holding MRI image data.
-    #     img_size (int): Input & output image size.
-    #     batch_size (int): Number of samples per batch.
-    #     epochs (int): Number of training epochs.
-    #     latent_dim (int): Dimensionality of latent space.
-    #     limit (int, optional): Max number of images to use.
-    #     learning_rate (float): Learning rate for optimizer.
-    #     beta (float): Weight for KL divergence in VAE loss.
+    """
+    Trains (VAE) on MRI images.
+    Args:
+        root_dir (str): Directory holding MRI image data.
+        img_size (int): Input & output image size.
+        batch_size (int): Number of samples per batch.
+        epochs (int): Number of training epochs.
+        latent_dim (int): Dimensionality of latent space.
+        limit (int, optional): Max number of images to use.
+        learning_rate (float): Learning rate for optimizer.
+        beta (float): Weight for KL divergence in VAE loss.
 
-    # Returns:
-    #     tuple: (final_train_loss, final_val_loss)
+    Returns:
+        tuple: (final_train_loss, final_val_loss)
+    """
    
     # Image preprocessing
     transform = transforms.Compose([
@@ -359,19 +373,21 @@ def train_vae(root_dir, img_size=128, batch_size=16, epochs=50, latent_dim=128, 
 # VAE-GAN Training
 def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=1000, learning_rate=1e-3, beta=0.1): 
     print(f"Params: \nImg size: {img_size}\nBatch size: {batch_size}\nEpochs: {epochs}\nLatent dim: {latent_dim}\nLimit: {limit}\nLearning Rate: {learning_rate}\nBeta: {beta}")
-    # Trains VAE-GAN using Wasserstein loss with gradient penalty.
+    """
+    Trains VAE-GAN using Wasserstein loss with gradient penalty.
 
-    # Args:
-    #     img_size (int): Size of input & output images.
-    #     batch_size (int): Batch size for training.
-    #     epochs (int): Number of epochs to train.
-    #     latent_dim (int): Size of latent vector.
-    #     limit (int): Max number of training images.
-    #     learning_rate (float): Learning rate for optimizers.
-    #     beta (float): KL-divergence weight in VAE loss.
+    Args:
+        img_size (int): Size of input & output images.
+        batch_size (int): Batch size for training.
+        epochs (int): Number of epochs to train.
+        latent_dim (int): Size of latent vector.
+        limit (int): Max number of training images.
+        learning_rate (float): Learning rate for optimizers.
+        beta (float): KL-divergence weight in VAE loss.
 
     Returns:
         float: Final validation loss.
+    """
     
     transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
@@ -489,16 +505,18 @@ def train_vae_gan(img_size=128, batch_size=16, epochs=50, latent_dim=128, limit=
 
 # Hyperparameter Optimization
 def optimize_hyperparams(img_size=128, epochs=25, limit=100, n_trials=100):
-    # Performs Optuna hyperparameter optimization for VAE-GAN.
+    """
+    Performs Optuna hyperparameter optimization for VAE-GAN.
 
-    # Args:
-    #     img_size (int): Image resolution.
-    #     epochs (int): Number of epochs for each trial.
-    #     limit (int): Max number of training samples per trial.
-    #     n_trials (int): Number of Optuna trials to run.
+    Args:
+        img_size (int): Image resolution.
+        epochs (int): Number of epochs for each trial.
+        limit (int): Max number of training samples per trial.
+        n_trials (int): Number of Optuna trials to run.
 
     Returns:
         tuple: (best_params, best_val_loss)
+    """
     
     def objective(trial): 
         latent_dim = trial.suggest_int("latent_dim", 32, img_size) 
